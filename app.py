@@ -1,7 +1,7 @@
 import logging
 import os
 from pathlib import Path
-from typing import Iterable, Mapping
+from typing import Dict, Iterable, Mapping
 from urllib.parse import urlparse, urlunparse
 
 from flask import Flask, render_template, request
@@ -13,7 +13,12 @@ from elasticsearch_index.es_index import (
     index_multiple,
     search_pdfs,
 )
-from storage.manifest import Manifest, load_manifest, update_manifest
+from storage.manifest import (
+    Manifest,
+    load_manifest,
+    pending_documents,
+    update_manifest,
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -104,15 +109,30 @@ def start_scraping():
         download_folder,
         allowed_hosts=allowed_hosts,
     )
+    pending_to_index = pending_documents(_load_manifest())
+
     try:
         create_index()
-        index_stats = index_multiple(downloaded_documents)
-        manifest = _update_manifest(index_stats["documents"])
+        pending_stats = (
+            index_multiple(pending_to_index) if pending_to_index else _empty_index_stats()
+        )
+        new_stats = (
+            index_multiple(downloaded_documents)
+            if downloaded_documents
+            else _empty_index_stats()
+        )
+        manifest = _update_manifest(
+            [*pending_stats["documents"], *new_stats["documents"]]
+        )
+        totals = _combine_index_stats(pending_stats, new_stats)
     except RuntimeError as exc:
         logger.error("Failed to index PDFs: %s", exc)
         manifest = _update_manifest(
             _pending_records(downloaded_documents)
         )
+        pending_stats = _empty_index_stats()
+        new_stats = _empty_index_stats()
+        totals = _combine_index_stats(pending_stats, new_stats)
         error_message = (
             "Failed to index PDFs because Elasticsearch is unavailable. "
             "Downloads are recorded locally and can be re-indexed later."
@@ -122,9 +142,13 @@ def start_scraping():
     message = {
         "website_url": start_url,
         "downloaded": len(downloaded_documents),
-        "indexed": index_stats["indexed"],
-        "duplicates": index_stats["duplicates"],
-        "skipped": index_stats["skipped"],
+        "indexed": totals["indexed"],
+        "duplicates": totals["duplicates"],
+        "skipped": totals["skipped"],
+        "indexed_new": new_stats["indexed"],
+        "duplicates_new": new_stats["duplicates"],
+        "skipped_new": new_stats["skipped"],
+        "reindexed_pending": pending_stats["indexed"],
         "library_total": manifest.stats["total"],
     }
 
@@ -167,6 +191,24 @@ def _pending_records(documents: Iterable[Mapping[str, object]]):
             continue
         metadata.update({"indexed": False, "status": "not_indexed"})
         yield metadata
+
+
+def _empty_index_stats() -> Dict[str, object]:
+    return {
+        "indexed": 0,
+        "duplicates": 0,
+        "skipped": 0,
+        "documents": [],
+    }
+
+
+def _combine_index_stats(*stats_groups: Mapping[str, object]) -> Dict[str, int]:
+    totals: Dict[str, int] = {"indexed": 0, "duplicates": 0, "skipped": 0}
+    for stats in stats_groups:
+        totals["indexed"] += int(stats.get("indexed", 0))
+        totals["duplicates"] += int(stats.get("duplicates", 0))
+        totals["skipped"] += int(stats.get("skipped", 0))
+    return totals
 
 
 if __name__ == "__main__":

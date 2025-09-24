@@ -110,6 +110,32 @@ def update_manifest(base_dir: Path, records: Iterable[Mapping[str, object]]) -> 
     return manifest
 
 
+def pending_documents(manifest: Manifest) -> List[Dict[str, object]]:
+    """Return manifest entries that still need to be indexed."""
+
+    pending: List[Dict[str, object]] = []
+    for document in manifest.documents:
+        status = str(document.get("status") or "unknown").lower()
+        if status not in {"not_indexed", "unknown"}:
+            continue
+
+        path = document.get("path")
+        url = document.get("url")
+        if not path or not url:
+            continue
+
+        pending.append(
+            {
+                "path": path,
+                "url": url,
+                "source_page": document.get("source_page"),
+                "downloaded_at": document.get("downloaded_at"),
+            }
+        )
+
+    return pending
+
+
 def _merge_record(
     existing: Mapping[str, object], new_data: Mapping[str, object]
 ) -> Dict[str, object]:

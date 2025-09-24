@@ -16,10 +16,25 @@
         <section>
             <h2>Latest Crawl Summary</h2>
             <p>Website: <strong>{{ message.website_url }}</strong></p>
-            <p>PDFs discovered: <strong>{{ message.downloaded }}</strong></p>
-            <p>Indexed (new): <strong>{{ message.indexed }}</strong></p>
-            <p>Duplicates: <strong>{{ message.duplicates }}</strong></p>
-            <p>Skipped (no text or errors): <strong>{{ message.skipped }}</strong></p>
+            <p>PDFs discovered during this crawl: <strong>{{ message.downloaded }}</strong></p>
+            <p>Total documents indexed in this run: <strong>{{ message.indexed }}</strong></p>
+            {% if message.reindexed_pending %}
+                <p>Re-indexed pending documents: <strong>{{ message.reindexed_pending }}</strong></p>
+            {% endif %}
+            {% if message.duplicates %}
+                <p>Total duplicates detected: <strong>{{ message.duplicates }}</strong></p>
+            {% endif %}
+            {% if message.skipped %}
+                <p>Total skipped (no text or errors): <strong>{{ message.skipped }}</strong></p>
+            {% endif %}
+            {% if message.downloaded %}
+                <p>
+                    New downloads &mdash;
+                    indexed: <strong>{{ message.indexed_new }}</strong>,
+                    duplicates: <strong>{{ message.duplicates_new }}</strong>,
+                    skipped: <strong>{{ message.skipped_new }}</strong>
+                </p>
+            {% endif %}
             <p>Library size after crawl: <strong>{{ message.library_total }}</strong> documents</p>
         </section>
         <hr>
