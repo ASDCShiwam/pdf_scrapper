@@ -7,15 +7,41 @@
 </head>
 <body>
     <h1>Search Results</h1>
-    
-    <ul>
-    {% for result in results %}
-        <li>
-            <a href="{{ result['_source']['url'] }}" target="_blank">{{ result['_source']['name'] }}</a>
-            <p>{{ result['_source']['content'][:200] }}...</p>  <!-- Preview the first 200 chars -->
-        </li>
-    {% endfor %}
-    </ul>
+
+    {% if error %}
+        <p style="color: red;">{{ error }}</p>
+    {% endif %}
+
+    {% if not query %}
+        <p>Please provide a search query.</p>
+    {% elif results %}
+        <ul>
+        {% for result in results %}
+            <li>
+                <a href="{{ result['_source']['url'] }}" target="_blank">{{ result['_source']['name'] }}</a>
+                {% set highlight = result.get('highlight', {}).get('content', []) %}
+                {% if highlight %}
+                    <p>{{ highlight[0]|safe }}</p>
+                {% else %}
+                    {% set snippet = result['_source']['content'][:200] %}
+                    <p>{{ snippet }}{% if result['_source']['content']|length > 200 %}...{% endif %}</p>
+                {% endif %}
+                {% if result['_source'].get('source_page') %}
+                    <p>
+                        Found on:
+                        <a href="{{ result['_source']['source_page'] }}" target="_blank">
+                            {{ result['_source']['source_page'] }}
+                        </a>
+                    </p>
+                {% endif %}
+            </li>
+        {% endfor %}
+        </ul>
+    {% elif error %}
+        <p>Search results are unavailable at the moment.</p>
+    {% else %}
+        <p>No results found for <strong>{{ query }}</strong>.</p>
+    {% endif %}
 
     <hr>
     <a href="/">Back to Homepage</a>

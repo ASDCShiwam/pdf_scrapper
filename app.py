@@ -1,57 +1,173 @@
-from flask import Flask, request, render_template
-from elasticsearch import Elasticsearch
+import logging
 import os
+from pathlib import Path
+from typing import Iterable, Mapping
+from urllib.parse import urlparse, urlunparse
+
+from flask import Flask, render_template, request
+
 from crawler.crawler import crawl_and_download
-from elasticsearch_index.es_index import create_index, index_pdf, search_pdfs
+from elasticsearch_index.es_index import (
+    build_document_metadata,
+    create_index,
+    index_multiple,
+    search_pdfs,
+)
+from storage.manifest import Manifest, load_manifest, update_manifest
 
-# Initialize the Flask app
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 app = Flask(__name__)
+app.config["SECRET_KEY"] = os.getenv("FLASK_SECRET_KEY", "change-me")
+app.config["DOWNLOAD_DIR"] = Path(os.getenv("DOWNLOAD_DIR", "./downloaded_pdfs")).resolve()
+app.config["MANIFEST_PATH"] = app.config["DOWNLOAD_DIR"] / "manifest.json"
 
-# Initialize Elasticsearch client
-es = Elasticsearch([{'host': 'localhost', 'port': 9200, 'scheme': 'http'}])
 
-# Create index in Elasticsearch if it doesn't exist
-create_index()
+def _filesize(value: object) -> str:
+    try:
+        size = float(value)
+    except (TypeError, ValueError):
+        return "-"
 
-# Route for the homepage
-@app.route('/')
+    units = ["B", "KB", "MB", "GB", "TB"]
+    index = 0
+    while size >= 1024 and index < len(units) - 1:
+        size /= 1024
+        index += 1
+    if index == 0:
+        return f"{int(size)} {units[index]}"
+    return f"{size:.2f} {units[index]}"
+
+
+app.jinja_env.filters["filesize"] = _filesize
+
+
+def _load_manifest() -> Manifest:
+    return load_manifest(app.config["DOWNLOAD_DIR"])
+
+
+def _render_home(**context):
+    context.setdefault("manifest", _load_manifest())
+    context.setdefault("manifest_path", str(app.config["MANIFEST_PATH"]))
+    return render_template("index.html", **context)
+
+
+def _update_manifest(records: Iterable[Mapping[str, object]]) -> Manifest:
+    return update_manifest(app.config["DOWNLOAD_DIR"], records)
+
+
+try:
+    create_index()
+except RuntimeError as exc:
+    logger.warning("Elasticsearch unavailable during startup: %s", exc)
+
+
+@app.route("/")
 def index():
-    return render_template('index.html')  # Display the input form
+    return _render_home()
 
-# Route for scraping process
-@app.route('/start_scraping', methods=['POST'])
+
+def _normalize_start_url(raw_url: str) -> str:
+    """Return a fully qualified URL for crawling."""
+
+    parsed = urlparse(raw_url)
+    if not parsed.scheme:
+        # Default to HTTP for intranet/offline sites unless a scheme is provided.
+        parsed = parsed._replace(scheme="http")
+    if not parsed.netloc:
+        # In case the user passed only a hostname without scheme.
+        parsed = urlparse(f"{parsed.scheme}://{parsed.path}")
+    if not parsed.netloc:
+        raise ValueError("A valid hostname is required to start crawling.")
+    return urlunparse(parsed)
+
+
+@app.post("/start_scraping")
 def start_scraping():
-    # Get the URL from the form
-    website_url = request.form['url']
-    
-    # Folder to save downloaded PDFs
-    download_folder = './downloaded_pdfs'
-    if not os.path.exists(download_folder):
-        os.makedirs(download_folder)
+    website_url = request.form.get("url", "").strip()
+    if not website_url:
+        return _render_home(error="A website URL is required."), 400
 
-    # Call the scraping function to start crawling and downloading PDFs
-    crawl_and_download(website_url, download_folder)
+    try:
+        start_url = _normalize_start_url(website_url)
+    except ValueError as exc:
+        return _render_home(error=str(exc)), 400
 
-    # After scraping, index the downloaded PDFs into Elasticsearch
-    for pdf_file in os.listdir(download_folder):
-        if pdf_file.endswith('.pdf'):
-            pdf_path = os.path.join(download_folder, pdf_file)
-            pdf_url = website_url + '/' + pdf_file  # Adjust based on the structure of the website
-            index_pdf(pdf_path, pdf_url)
+    download_folder: Path = app.config["DOWNLOAD_DIR"]
+    download_folder.mkdir(parents=True, exist_ok=True)
 
-    return f"Scraping started for {website_url}. PDFs will be downloaded and indexed."
+    allowed_hosts = {urlparse(start_url).netloc}
 
-# Route for searching PDFs
-@app.route('/search', methods=['GET', 'POST'])
+    downloaded_documents = crawl_and_download(
+        start_url,
+        download_folder,
+        allowed_hosts=allowed_hosts,
+    )
+    try:
+        create_index()
+        index_stats = index_multiple(downloaded_documents)
+        manifest = _update_manifest(index_stats["documents"])
+    except RuntimeError as exc:
+        logger.error("Failed to index PDFs: %s", exc)
+        manifest = _update_manifest(
+            _pending_records(downloaded_documents)
+        )
+        error_message = (
+            "Failed to index PDFs because Elasticsearch is unavailable. "
+            "Downloads are recorded locally and can be re-indexed later."
+        )
+        return _render_home(error=error_message, manifest=manifest), 502
+
+    message = {
+        "website_url": start_url,
+        "downloaded": len(downloaded_documents),
+        "indexed": index_stats["indexed"],
+        "duplicates": index_stats["duplicates"],
+        "skipped": index_stats["skipped"],
+        "library_total": manifest.stats["total"],
+    }
+
+    return _render_home(message=message, manifest=manifest)
+
+
+@app.route("/search", methods=["GET", "POST"])
 def search():
-    query = request.form.get('query')  # Get the search query from the form
+    query = request.values.get("query", "").strip()
     results = []
-    
+    error = None
     if query:
-        # Use the search_pdfs function to query Elasticsearch
-        results = search_pdfs(query)
+        try:
+            results = search_pdfs(query)
+        except RuntimeError as exc:
+            logger.error("Search failed: %s", exc)
+            error = (
+                "Elasticsearch is unavailable. Please try again once the "
+                "cluster is reachable."
+            )
 
-    return render_template('search_results.html', results=results)  # Display search results
+    return render_template(
+        "search_results.html",
+        query=query,
+        results=results,
+        error=error,
+    )
 
-if __name__ == '__main__':
+
+def _pending_records(documents: Iterable[Mapping[str, object]]):
+    for doc in documents:
+        try:
+            metadata = build_document_metadata(
+                doc["path"],
+                doc["url"],
+                source_page=doc.get("source_page"),
+                downloaded_at=doc.get("downloaded_at"),
+            )
+        except FileNotFoundError:
+            continue
+        metadata.update({"indexed": False, "status": "not_indexed"})
+        yield metadata
+
+
+if __name__ == "__main__":
     app.run(debug=True)

@@ -7,8 +7,24 @@
 </head>
 <body>
     <h1>Welcome to the PDF Scraper</h1>
-    
-    <!-- Form to input website URL -->
+
+    {% if error %}
+        <p style="color: red;">{{ error }}</p>
+    {% endif %}
+
+    {% if message %}
+        <section>
+            <h2>Latest Crawl Summary</h2>
+            <p>Website: <strong>{{ message.website_url }}</strong></p>
+            <p>PDFs discovered: <strong>{{ message.downloaded }}</strong></p>
+            <p>Indexed (new): <strong>{{ message.indexed }}</strong></p>
+            <p>Duplicates: <strong>{{ message.duplicates }}</strong></p>
+            <p>Skipped (no text or errors): <strong>{{ message.skipped }}</strong></p>
+            <p>Library size after crawl: <strong>{{ message.library_total }}</strong> documents</p>
+        </section>
+        <hr>
+    {% endif %}
+
     <form action="/start_scraping" method="POST">
         <label for="url">Enter Website URL:</label>
         <input type="text" id="url" name="url" placeholder="Enter the website URL" required>
@@ -17,7 +33,6 @@
 
     <hr>
 
-    <!-- Search form -->
     <h2>Search for PDFs</h2>
     <form action="/search" method="POST">
         <label for="query">Search:</label>
@@ -25,16 +40,53 @@
         <button type="submit">Search</button>
     </form>
 
-    {% if results %}
-        <h3>Search Results:</h3>
-        <ul>
-        {% for result in results %}
-            <li>
-                <a href="{{ result['_source']['url'] }}" target="_blank">{{ result['_source']['name'] }}</a>
-                <p>{{ result['_source']['content'][:200] }}...</p>
-            </li>
-        {% endfor %}
-        </ul>
-    {% endif %}
+    <hr>
+
+    <section>
+        <h2>Indexed Library Overview</h2>
+        {% if manifest.stats.total %}
+            <p>Total documents: <strong>{{ manifest.stats.total }}</strong></p>
+            <p>Total size: <strong>{{ manifest.stats.total_size | filesize }}</strong></p>
+            <ul>
+                {% for status, count in manifest.stats.status_breakdown | dictsort %}
+                    <li>{{ status.replace('_', ' ') | title }}: {{ count }}</li>
+                {% endfor %}
+            </ul>
+            <p>Manifest stored at: <code>{{ manifest_path }}</code></p>
+            <table border="1" cellpadding="6" cellspacing="0">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Status</th>
+                        <th>Downloaded</th>
+                        <th>Size</th>
+                        <th>Source Page</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for doc in manifest.documents %}
+                        <tr>
+                            <td>
+                                <a href="{{ doc.url }}" target="_blank">{{ doc.name }}</a>
+                            </td>
+                            <td>{{ doc.status.replace('_', ' ') | title }}</td>
+                            <td>{{ doc.downloaded_at }}</td>
+                            <td>{{ doc.size | filesize }}</td>
+                            <td>
+                                {% if doc.source_page %}
+                                    <a href="{{ doc.source_page }}" target="_blank">Link</a>
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% else %}
+            <p>No PDFs have been downloaded yet. Start a crawl to build the library.</p>
+            <p>Manifest will be created at: <code>{{ manifest_path }}</code></p>
+        {% endif %}
+    </section>
 </body>
 </html>
