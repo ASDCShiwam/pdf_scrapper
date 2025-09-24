@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Scraper</title>
+</head>
+<body>
+    <h1>Welcome to the PDF Scraper</h1>
+    
+    <!-- Form to input website URL -->
+    <form action="/start_scraping" method="POST">
+        <label for="url">Enter Website URL:</label>
+        <input type="text" id="url" name="url" placeholder="Enter the website URL" required>
+        <button type="submit">Start Scraping</button>
+    </form>
+
+    <hr>
+
+    <!-- Search form -->
+    <h2>Search for PDFs</h2>
+    <form action="/search" method="POST">
+        <label for="query">Search:</label>
+        <input type="text" id="query" name="query" placeholder="Enter keyword to search PDFs">
+        <button type="submit">Search</button>
+    </form>
+
+    {% if results %}
+        <h3>Search Results:</h3>
+        <ul>
+        {% for result in results %}
+            <li>
+                <a href="{{ result['_source']['url'] }}" target="_blank">{{ result['_source']['name'] }}</a>
+                <p>{{ result['_source']['content'][:200] }}...</p>
+            </li>
+        {% endfor %}
+        </ul>
+    {% endif %}
+</body>
+</html>

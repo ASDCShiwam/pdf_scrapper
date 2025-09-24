@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Search Results</title>
+</head>
+<body>
+    <h1>Search Results</h1>
+    
+    <ul>
+    {% for result in results %}
+        <li>
+            <a href="{{ result['_source']['url'] }}" target="_blank">{{ result['_source']['name'] }}</a>
+            <p>{{ result['_source']['content'][:200] }}...</p>  <!-- Preview the first 200 chars -->
+        </li>
+    {% endfor %}
+    </ul>
+
+    <hr>
+    <a href="/">Back to Homepage</a>
+</body>
+</html>

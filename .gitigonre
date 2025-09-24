@@ -1,0 +1,59 @@
+# Python bytecode
+*.pyc
+*.pyo
+__pycache__/
+
+# Flask specific files
+instance/
+.webassets-cache
+
+# Virtual environment
+venv/
+pdf_scraper_env/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+*.out
+
+# Database files
+*.db
+*.sqlite3
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDEs and editors
+.vscode/
+.idea/
+*.iml
+*.sublime-workspace
+*.sublime-project
+*.swp
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
+
+# Elasticsearch data and config files
+elasticsearch_data/
+elasticsearch_config/
+
+# Application build files
+*.egg
+*.egg-info/
+dist/
+build/
+*.manifest
+*.spec
+
+# Python wheels
+*.whl
+
+# Ignore PDFs
+*.pdf
+pdfs/
