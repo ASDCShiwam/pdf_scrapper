@@ -7,8 +7,21 @@
 </head>
 <body>
     <h1>Welcome to the PDF Scraper</h1>
-    
-    <!-- Form to input website URL -->
+
+    {% if error %}
+        <p style="color: red;">{{ error }}</p>
+    {% endif %}
+
+    {% if message %}
+        <section>
+            <h2>Latest Crawl Summary</h2>
+            <p>Website: <strong>{{ message.website_url }}</strong></p>
+            <p>PDFs discovered: <strong>{{ message.downloaded }}</strong></p>
+            <p>PDFs indexed: <strong>{{ message.indexed }}</strong></p>
+        </section>
+        <hr>
+    {% endif %}
+
     <form action="/start_scraping" method="POST">
         <label for="url">Enter Website URL:</label>
         <input type="text" id="url" name="url" placeholder="Enter the website URL" required>
@@ -17,24 +30,11 @@
 
     <hr>
 
-    <!-- Search form -->
     <h2>Search for PDFs</h2>
     <form action="/search" method="POST">
         <label for="query">Search:</label>
         <input type="text" id="query" name="query" placeholder="Enter keyword to search PDFs">
         <button type="submit">Search</button>
     </form>
-
-    {% if results %}
-        <h3>Search Results:</h3>
-        <ul>
-        {% for result in results %}
-            <li>
-                <a href="{{ result['_source']['url'] }}" target="_blank">{{ result['_source']['name'] }}</a>
-                <p>{{ result['_source']['content'][:200] }}...</p>
-            </li>
-        {% endfor %}
-        </ul>
-    {% endif %}
 </body>
 </html>
