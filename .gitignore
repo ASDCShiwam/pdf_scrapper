@@ -1,0 +1,15 @@
+# Ignore Python virtual environment directory
+pdf_scraper_env/
+env/
+
+# Ignore the downloaded PDFs folder
+.pdf
+pdfs/
+
+# Ignore .env files (if you're using them for configuration)
+*.env
+
+# Ignore Python bytecode files
+*.pyc
+*.pyo
+__pycache__/
